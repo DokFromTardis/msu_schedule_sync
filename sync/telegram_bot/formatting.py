@@ -373,6 +373,74 @@ def compute_schedule_diff(
     added = [(None, n) for (_, n) in added if id(n) not in paired_new]
     removed = [(o, None) for (o, _) in removed if id(o) not in paired_old]
 
+    # Second pass: pair by same day and same normalized title, ignoring time
+    # This converts time-only shifts (and other small edits) into "modified"
+    # instead of added+removed.
+    def _title_key_no_time(it: Mapping[str, Any]) -> str:
+        # Keep date + normalized title only; this allows pairing even if time/room/teacher changed.
+        # Using only date+title is a pragmatic balance: typical schedule doesn't have
+        # multiple identical-titled items per day for the same group; if it does, we
+        # will pick the closest by time below.
+        return "|".join(
+            [
+                str(it.get("date", "")),
+                normalize_title_for_key(str(it.get("title", ""))),
+            ]
+        )
+
+    # Build pools of still-unpaired items
+    leftovers_old: list[dict[str, Any]] = [o for (o, _) in removed if o]
+    leftovers_new: list[dict[str, Any]] = [n for (_, n) in added if n]
+
+    if leftovers_old and leftovers_new:
+        old_by_key: dict[str, list[dict[str, Any]]] = {}
+        for o in leftovers_old:
+            old_by_key.setdefault(_title_key_no_time(o), []).append(o)
+        new_by_key: dict[str, list[dict[str, Any]]] = {}
+        for n in leftovers_new:
+            new_by_key.setdefault(_title_key_no_time(n), []).append(n)
+
+        # Helper: minutes since midnight for start time (fallback 0)
+        def _start_minutes(it: Mapping[str, Any]) -> int:
+            try:
+                hh, mm = str(it.get("start") or "0:0").split(":")
+                return int(hh) * 60 + int(mm)
+            except Exception:
+                return 0
+
+        # Greedy match within each key by nearest start time
+        for key, olds in list(old_by_key.items()):
+            news = list(new_by_key.get(key, []))
+            if not news:
+                continue
+            # Sort by start time to get deterministic pairing
+            olds.sort(key=_start_minutes)
+            news.sort(key=_start_minutes)
+
+            used_news: set[int] = set()
+            for o in olds:
+                best_idx = -1
+                best_delta = None
+                o_min = _start_minutes(o)
+                for i, n in enumerate(news):
+                    if i in used_news:
+                        continue
+                    n_min = _start_minutes(n)
+                    delta = abs(n_min - o_min)
+                    if best_delta is None or delta < best_delta:
+                        best_delta = delta
+                        best_idx = i
+                if best_idx >= 0:
+                    n = news[best_idx]
+                    used_news.add(best_idx)
+                    modified.append((o, n))
+
+            # Remove paired ones from leftovers
+            paired_old_ids = {id(o) for o, _ in modified}
+            paired_new_ids = {id(n) for _, n in modified}
+            removed = [(o, None) for (o, _) in removed if o and id(o) not in paired_old_ids]
+            added = [(None, n) for (_, n) in added if n and id(n) not in paired_new_ids]
+
     def _same_semantics(o: dict[str, Any] | None, n: dict[str, Any] | None) -> bool:
         if not o or not n:
             return False
@@ -380,6 +448,12 @@ def compute_schedule_diff(
 
         t1 = normalize_title_for_key(str(o.get("title", "")))
         t2 = normalize_title_for_key(str(n.get("title", "")))
+
+        # If time changed, this is NOT the same semantics for diff purposes
+        if str(o.get("start", "")) != str(n.get("start", "")) or str(o.get("end", "")) != str(
+            n.get("end", "")
+        ):
+            return False
 
         def _canon_rooms(s: str) -> str:
             parts = [p.strip() for p in (s or "").split(",") if p.strip()]
