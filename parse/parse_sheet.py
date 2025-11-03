@@ -127,6 +127,41 @@ def _extract_meta(parts: list[str], *, title_line: str) -> tuple[str, str, list[
     return room, teacher, groups, added_at
 
 
+def _iso_date_from(date_str: str | None, *, raw_title: str | None = None) -> str | None:
+    """Parse a header date into ISO (YYYY-MM-DD), tolerating missing year.
+
+    Tries the following in order:
+    - Exact dd.mm.YYYY from the header cell
+    - dd.mm (no year) combined with the year extracted from raw_title (e.g., "10.11.2025 1 пара")
+    Returns None if parsing fails.
+    """
+    s = (date_str or "").strip()
+    if not s:
+        return None
+    # Try strict dd.mm.YYYY first
+    try:
+        dt = datetime.strptime(s, "%d.%m.%Y")
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    # Try dd.mm (yearless) with fallback year from raw_title
+    try:
+        dt = datetime.strptime(s, "%d.%m")
+        year = None
+        if raw_title:
+            import re as _re
+
+            m = _re.search(r"(\d{2})\.(\d{2})\.(\d{4})", raw_title)
+            if m:
+                year = int(m.group(3))
+        if year is None:
+            return None
+        dt = dt.replace(year=year)
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
 def parse_table(driver, *, timeout: int = 20) -> list[ParsedItem]:
     """Parse the visible timetable table into a list of lesson dicts."""
 
@@ -175,16 +210,15 @@ def parse_table(driver, *, timeout: int = 20) -> list[ParsedItem]:
                 if not date_str:
                     continue
 
-                try:
-                    dt = datetime.strptime(date_str, "%d.%m.%Y")
-                    iso_date = dt.strftime("%Y-%m-%d")
-                except Exception:
-                    # Skip malformed dates rather than crashing the whole parse
-                    continue
-
                 for lb in lesson_blocks:
                     raw_content = lb.get_attribute("data-content") or ""
                     raw_title = lb.get_attribute("data-original-title") or ""
+
+                    # Derive ISO date (fallback to popover title year if header misses it)
+                    iso_date = _iso_date_from(date_str, raw_title=raw_title)
+                    if not iso_date:
+                        # Skip malformed dates rather than crashing the whole parse
+                        continue
 
                     parts = _split_html_lines(raw_content)
 
