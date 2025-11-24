@@ -95,7 +95,11 @@ EOF
 }
 
 create_htpasswd() {
-  htpasswd -bB -C 12 "$RADICALE_USERS" "$CALDAV_USER" "$CALDAV_PASS"
+  if [ -f "$RADICALE_USERS" ]; then
+    htpasswd -bB -C 12 "$RADICALE_USERS" "$CALDAV_USER" "$CALDAV_PASS"
+  else
+    htpasswd -bBC 12 "$RADICALE_USERS" "$CALDAV_USER" "$CALDAV_PASS"
+  fi
   chown radicale:radicale "$RADICALE_USERS"
 }
 
