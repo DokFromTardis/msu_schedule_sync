@@ -210,7 +210,7 @@ def load_env_config(env_path: str) -> AppConfig:
     serve_timetable = env_get_bool("SERVE_TIMETABLE", default=True)
     timetable_host = env_get("TIMETABLE_HOST", default="127.0.0.1") or "127.0.0.1"
     try:
-    timetable_port = int(env_get("TIMETABLE_PORT", default="8080") or "8080")
+        timetable_port = int(env_get("TIMETABLE_PORT", default="8080") or "8080")
     except ValueError:
         timetable_port = 8080
     timetable_base_path = env_get("TIMETABLE_BASE_PATH", default="/timetable") or "/timetable"
