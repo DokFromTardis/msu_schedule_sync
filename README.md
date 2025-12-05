@@ -95,6 +95,7 @@ Environment (.env.config)
   - `DRY_RUN`: true/false
   - Timetable server:
     - `SERVE_TIMETABLE`, `TIMETABLE_HOST`, `TIMETABLE_PORT`, `TIMETABLE_BASE_PATH`, `TIMETABLE_STORAGE_DIR`
+    - `CALDAV_SYNC_CMD`: optional shell command run after any calendar change (e.g., `sudo -u radicale /opt/radicale/venv/bin/vdirsyncer -c /var/lib/radicale/.vdirsyncer/config sync`) to keep a CalDAV mirror up to date.
   - `SELENIUM_TIMEOUT`: waits in seconds (default: 20)
   - `CHROME_ARGS`: extra Chrome flags, e.g. `--disable-gpu --lang=ru-RU`
   - `LOG_LEVEL`: logging level (DEBUG/INFO/WARNING/ERROR)

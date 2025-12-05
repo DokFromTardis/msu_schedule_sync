@@ -75,6 +75,8 @@ class AppConfig:
     timetable_port: int = 8080
     timetable_base_path: str = "/timetable"
     timetable_storage_dir: str = "sync/var/timetable"
+    # Optional external sync hook (e.g., CalDAV/vdirsyncer)
+    caldav_sync_cmd: str | None = None
     # Database (optional) for Telegram user data
     database_url: str | None = None
 
@@ -208,13 +210,14 @@ def load_env_config(env_path: str) -> AppConfig:
     serve_timetable = env_get_bool("SERVE_TIMETABLE", default=True)
     timetable_host = env_get("TIMETABLE_HOST", default="127.0.0.1") or "127.0.0.1"
     try:
-        timetable_port = int(env_get("TIMETABLE_PORT", default="8080") or "8080")
+    timetable_port = int(env_get("TIMETABLE_PORT", default="8080") or "8080")
     except ValueError:
         timetable_port = 8080
     timetable_base_path = env_get("TIMETABLE_BASE_PATH", default="/timetable") or "/timetable"
     timetable_storage_dir = (
         env_get("TIMETABLE_STORAGE_DIR", default="sync/var/timetable") or "sync/var/timetable"
     )
+    caldav_sync_cmd = env_get("CALDAV_SYNC_CMD", "VDIRSYNCER_SYNC_CMD", "POST_PUBLISH_CMD")
     database_url = env_get("DATABASE_URL")
 
     return AppConfig(
@@ -249,6 +252,7 @@ def load_env_config(env_path: str) -> AppConfig:
         timetable_port=timetable_port,
         timetable_base_path=timetable_base_path,
         timetable_storage_dir=timetable_storage_dir,
+        caldav_sync_cmd=caldav_sync_cmd,
         database_url=database_url,
     )
 

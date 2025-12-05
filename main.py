@@ -6,6 +6,8 @@ pipeline (logging setup → browser → fill filters → parse → optional grou
 
 from __future__ import annotations
 
+import shlex
+import subprocess
 import sys
 
 from loguru import logger
@@ -109,6 +111,7 @@ def run(env_path: str = ".env.config") -> None:
                         write_groups_index(storage_root, groups)
                     except Exception:
                         logger.debug("Не удалось записать groups.json")
+                    any_calendar_changed = False
                     for g in getattr(cfg, "groups", None) or [cfg.group]:
                         gid = group_id_from_name(g)
                         # group-specific snapshot path
@@ -136,6 +139,7 @@ def run(env_path: str = ".env.config") -> None:
                                     group_id=gid,
                                     timezone=cfg_g.timezone,
                                 )
+                                any_calendar_changed = any_calendar_changed or changed
                                 logger.success(
                                     "Готово: записано событий {} для группы {} (изменения: {}).",
                                     events_count,
@@ -178,6 +182,38 @@ def run(env_path: str = ".env.config") -> None:
                                 )
                         except Exception as group_err:
                             logger.exception("Сбой обработки группы {}: {}", g, group_err)
+
+                    # Optional external sync (e.g., CalDAV/vdirsyncer) when any calendar changed
+                    if (
+                        any_calendar_changed
+                        and not dry_run
+                        and getattr(cfg, "caldav_sync_cmd", None)
+                    ):
+                        cmd = cfg.caldav_sync_cmd or ""
+                        try:
+                            argv = shlex.split(cmd)
+                            logger.info("Синхронизация CalDAV/vdirsyncer: {}", cmd)
+                            res = subprocess.run(
+                                argv,
+                                capture_output=True,
+                                text=True,
+                                timeout=300,
+                            )
+                            if res.returncode == 0:
+                                logger.success("Синхронизация CalDAV завершена")
+                            else:
+                                err = res.stderr.strip() or res.stdout.strip()
+                                logger.error(
+                                    "Синхронизация CalDAV завершилась с кодом {}: {}",
+                                    res.returncode,
+                                    err,
+                                )
+                        except subprocess.TimeoutExpired:
+                            logger.error("Синхронизация CalDAV превысила таймаут 300с")
+                        except FileNotFoundError:
+                            logger.error("Команда синхронизации CalDAV не найдена: {}", cmd)
+                        except Exception:
+                            logger.exception("Сбой при выполнении внешней синхронизации")
                 except Exception as loop_err:
                     # Reinitialize driver on fatal WebDriver errors with exponential backoff
                     if _should_reinit(loop_err):
